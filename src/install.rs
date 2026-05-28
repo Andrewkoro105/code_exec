@@ -5,7 +5,7 @@ use std::{
     path::Path,
 };
 
-pub trait Install<'de>
+pub trait Install
 where
     Self: Sized,
 {
