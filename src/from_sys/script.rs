@@ -49,7 +49,7 @@ impl From<String> for Script {
 }
 
 impl Parser for MatParser {
-    fn get_use_fns(&self, script: String) -> Result<HashSet<String>, Box<dyn ToString>> {
+    fn get_use_fns(&self, _script: String) -> Result<HashSet<String>, Box<dyn ToString>> {
         todo!()
     }
 }

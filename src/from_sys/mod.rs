@@ -1,15 +1,16 @@
 pub mod script;
+pub mod matlab_like;
 
 use script::{Script, ScriptInspector};
 use serde_json::Value as JsonValue;
 use std::{
     collections::{HashMap, HashSet},
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Write},
     process::{ChildStdout, Command, Stdio},
 };
 use tracing::debug;
 
-use crate::backend::from_sys::script::{InspectorError, MatParser};
+use crate::{from_sys::script::{InspectorError, MatParser}, run_script::RunScript, values::Values};
 
 #[derive(Debug)]
 pub enum FromSysError {
@@ -24,23 +25,15 @@ pub struct FromSys {
     pub script_inspector: ScriptInspector,
 }
 
-impl super::Backend for FromSys {
+impl RunScript for FromSys {
     type Script = Script;
     type Error = FromSysError;
-
-    fn run_scripts(
-        &self,
-        script: Vec<Self::Script>,
-        data: HashMap<String, JsonValue>,
-    ) -> Result<Vec<super::Values>, Self::Error> {
-        todo!()
-    }
 
     fn run_script(
         &self,
         script: Self::Script,
         data: HashMap<String, JsonValue>,
-    ) -> Result<super::Values, Self::Error> {
+    ) -> Result<Values, Self::Error> {
         let script: String = self.get_script(script, &data)?;
         debug!("{script}");
 
@@ -62,75 +55,9 @@ impl super::Backend for FromSys {
 
         self.get_data(&mut stdout)
     }
-
-    fn run(
-        &mut self,
-        script: Self::Script,
-        data: HashMap<String, JsonValue>,
-    ) -> Result<super::Values, Self::Error> {
-        todo!()
-    }
-
-    fn clear(&mut self) -> Result<(), Self::Error> {
-        todo!()
-    }
-
-    fn get_data(&self) -> Result<super::Values, Self::Error> {
-        todo!()
-    }
 }
 
 impl FromSys {
-    pub fn new_matlab_like(name: impl ToString) -> Self {
-        let start_out_block = Self::get_start_out_block();
-        let end_out_block = Self::get_end_out_block();
-        Self {
-            base_command: name.to_string(),
-            print_value_pattern: format!(
-                r#"
-printf("{start_out_block}")
-vars = whos;
-
-allVars = struct();
-
-for k = 1:length(vars)
-    name = vars(k).name;
-    value = evalin('caller', name);
-    
-    if isnumeric(value) || islogical(value) || ischar(value) || isstring(value) || ...
-       isstruct(value) || iscell(value)
-        allVars.(name) = value;
-        
-    elseif istable(value)
-        allVars.(name) = table2struct(value);
-        
-    elseif isdatetime(value) || isduration(value) || iscategorical(value)
-        allVars.(name) = string(value);
-        
-    elseif iscomplex(value)
-        allVars.(name) = struct('re', real(value), 'im', imag(value));
-        
-    elseif issparse(value)
-        [i,j,s] = find(value);
-        allVars.(name) = struct('i', i, 'j', j, 'value', s, 'size', size(value));
-    else
-        allVars.(name) = sprintf('<%s>', class(value));
-    end
-end
-
-jsonString = jsonencode(allVars, 'PrettyPrint', true);
-disp(jsonString);
-
-printf("{end_out_block}")
-            "#
-            ),
-            input_value_pattern: "input_data = jsondecode({});".to_string(),
-            script_inspector: ScriptInspector {
-                restricted_functions: HashSet::new(),
-                parser: Box::new(MatParser {}) as _,
-            },
-        }
-    }
 
     fn get_script(
         &self,
@@ -162,7 +89,7 @@ printf("{end_out_block}")
         Ok(base_script)
     }
 
-    fn get_data(&self, stdout: &mut ChildStdout) -> Result<super::Values, FromSysError> {
+    fn get_data(&self, stdout: &mut ChildStdout) -> Result<Values, FromSysError> {
         let start_marker = Self::get_start_out_block().replace("\\n", "\n");
         let end_marker = Self::get_end_out_block().replace("\\n", "\n");
 
@@ -185,7 +112,7 @@ printf("{end_out_block}")
                         && out.is_char_boundary(slice_start)
                         && out.is_char_boundary(slice_end)
                     {
-                        break Ok(super::Values::new(
+                        break Ok(Values::new(
                             serde_json::from_slice(out[slice_start..slice_end].as_bytes()).unwrap(),
                             self.get_result_name(),
                         ));
@@ -207,30 +134,5 @@ printf("{end_out_block}")
 
     fn get_result_name(&self) -> String {
         format!("{}_{}_result", env!("CARGO_PKG_NAME"), self.base_command)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use serde_json::Number;
-
-    use crate::backend::Backend;
-    use std::collections::HashMap;
-
-    use super::*;
-
-    #[test]
-    fn simle() {
-        let mut data = HashMap::new();
-        data.insert("test_value".to_string(), JsonValue::Number(Number::from_u128(42).unwrap()));
-
-        let script_result = FromSys::new_matlab_like("octave")
-            .run_script("input_data.test_value ^ 2".to_string().into(), data)
-            .unwrap()
-            .get_result()
-            .as_u64()
-            .unwrap();
-
-        assert_eq!(script_result, 1764);
     }
 }
