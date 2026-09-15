@@ -55,8 +55,10 @@ printf("{end_out_block}")
             input_value_pattern: "input_data = jsondecode({});".to_string(),
             script_inspector: ScriptInspector {
                 restricted_functions: HashSet::new(),
-                parser: Box::new(MatParser {}) as _,
+                parser: Box::new(MatParser) as _,
             },
+            init_script: None,
+            runner: None,
         }
     }
 }
@@ -65,13 +67,16 @@ printf("{end_out_block}")
 mod test {
     use serde_json::{Number, Value as JsonValue};
 
-    use crate::run_script::RunScript;
+    use crate::{
+        clean::Clean, from_sys::FromSysError, run::Run, run_script::RunScript,
+        set_init_script::SetInitScript,
+    };
     use std::collections::HashMap;
 
     use super::*;
 
     #[test]
-    fn simle() {
+    fn run_script() {
         let mut data = HashMap::new();
         data.insert(
             "test_value".to_string(),
@@ -89,5 +94,121 @@ mod test {
         .unwrap();
 
         assert_eq!(script_result, 1764);
+    }
+
+    #[test]
+    fn init_run_script() -> Result<(), FromSysError> {
+        let mut data = HashMap::new();
+        data.insert(
+            "test_value".to_string(),
+            JsonValue::Number(Number::from_u128(42).unwrap()),
+        );
+
+        let mut octave = MatLabLikeBuilder {
+            target: "octave".into(),
+        }
+        .build();
+        octave.set_init_script(
+            "input_data.test_value = input_data.test_value ^ 2"
+                .to_string()
+                .into(),
+            data,
+        )?;
+
+        let result = octave
+            .run_script("input_data.test_value + 2".to_string().into(), HashMap::new())
+            .unwrap()
+            .get_result()
+            .as_u64()
+            .unwrap();
+        assert_eq!(result, 42u64.pow(2) + 2);
+
+        let result = octave
+            .run_script("input_data.test_value * 2".to_string().into(), HashMap::new())
+            .unwrap()
+            .get_result()
+            .as_u64()
+            .unwrap();
+        assert_eq!(result, 42u64.pow(2) * 2);
+        Ok(())
+    }
+
+    #[test]
+    fn run() -> Result<(), FromSysError> {
+        let mut data = HashMap::new();
+        data.insert(
+            "test_value".to_string(),
+            JsonValue::Number(Number::from_u128(42).unwrap()),
+        );
+
+        let mut octave = MatLabLikeBuilder {
+            target: "octave".into(),
+        }
+        .build();
+        octave.run(
+            "input_data.test_value = input_data.test_value * 2"
+                .to_string()
+                .into(),
+            data,
+        )?;
+        let result = octave
+            .run(
+                "input_data.test_value + 2".to_string().into(),
+                HashMap::new(),
+            )?
+            .get_result()
+            .as_u64()
+            .unwrap();
+        assert_eq!(result, 42 * 2 + 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn init_run() -> Result<(), FromSysError> {
+        let mut data = HashMap::new();
+        data.insert(
+            "test_value".to_string(),
+            JsonValue::Number(Number::from_u128(42).unwrap()),
+        );
+
+        let mut octave = MatLabLikeBuilder {
+            target: "octave".into(),
+        }
+        .build();
+        octave.set_init_script(
+            "input_data.test_value = input_data.test_value ^ 2"
+                .to_string()
+                .into(),
+            data,
+        )?;
+        octave.run(
+            "input_data.test_value = input_data.test_value * 2"
+                .to_string()
+                .into(),
+            HashMap::new(),
+        )?;
+        let result = octave
+            .run(
+                "input_data.test_value + 2".to_string().into(),
+                HashMap::new(),
+            )?
+            .get_result()
+            .as_u64()
+            .unwrap();
+        assert_eq!(result, 42u64.pow(2) * 2 + 2);
+
+        octave.clean()?;
+        let result = octave
+            .run(
+                "input_data.test_value + 2".to_string().into(),
+                HashMap::new(),
+            )?
+            .get_result()
+            .as_u64()
+            .unwrap();
+        assert_eq!(result, 42u64.pow(2) + 2);
+
+        Ok(())
     }
 }

@@ -10,7 +10,7 @@ pub enum InspectorError {
     UseUnsafeFunctions(Vec<String>),
 }
 
-pub struct MatParser {}
+pub struct MatParser;
 
 pub struct ScriptInspector {
     pub restricted_functions: HashSet<String>,

@@ -1,21 +1,25 @@
-pub mod script;
 pub mod matlab_like;
+pub mod script;
+pub mod runner;
 
+use crate::{
+    clean::Clean, from_sys::{runner::Runner, script::InspectorError}, run::Run, run_script::RunScript,
+    set_init_script::SetInitScript, values::Values,
+};
 use script::{Script, ScriptInspector};
 use serde_json::Value as JsonValue;
-use std::{
-    collections::{HashMap, HashSet},
-    io::{BufRead, BufReader, Write},
-    process::{ChildStdout, Command, Stdio},
-};
+use std::collections::HashMap;
 use tracing::debug;
-
-use crate::{from_sys::script::{InspectorError, MatParser}, run_script::RunScript, values::Values};
 
 #[derive(Debug)]
 pub enum FromSysError {
     Inspector(InspectorError),
     Io(std::io::Error),
+    IncorrectScriptOutput {
+        out: String,
+        start_marker: String,
+        end_marker: String,
+    },
 }
 
 pub struct FromSys {
@@ -23,6 +27,9 @@ pub struct FromSys {
     pub print_value_pattern: String,
     pub input_value_pattern: String,
     pub script_inspector: ScriptInspector,
+
+    runner: Option<Runner>,
+    init_script: Option<String>,
 }
 
 impl RunScript for FromSys {
@@ -36,29 +43,86 @@ impl RunScript for FromSys {
     ) -> Result<Values, Self::Error> {
         let script: String = self.get_script(script, &data)?;
         debug!("{script}");
+        self.get_data({
+            let mut runner = Runner::new(&self.base_command).map_err(Self::Error::Io)?;
+            if let Some(init_script) = self.init_script.clone() {
+                runner
+                    .run(init_script, Self::get_end_out_block().replace("\\n", "\n"))
+                    .map_err(Self::Error::Io)?;
+            }
+            runner
+                .run(script, Self::get_end_out_block().replace("\\n", "\n"))
+                .map_err(Self::Error::Io)?
+        })
+    }
+}
 
-        let mut child = Command::new(&self.base_command)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .map_err(FromSysError::Io)?;
+impl Run for FromSys {
+    type Script = Script;
 
-        let mut stdin = child.stdin.take().unwrap();
-        let mut stdout = child.stdout.take().unwrap();
+    type Error = FromSysError;
 
-        stdin
-            .write_all(script.as_bytes())
-            .map_err(FromSysError::Io)?;
-        stdin.write_all("\n".as_bytes()).map_err(FromSysError::Io)?;
+    fn run(
+        &mut self,
+        script: Self::Script,
+        data: HashMap<String, JsonValue>,
+    ) -> Result<Values, Self::Error> {
+        let script = self.get_script(script, &data)?;
+        debug!("{script}");
 
-        stdin.flush().map_err(FromSysError::Io)?;
+        if self.runner.is_none() {
+            self.runner = Some(Runner::new(&self.base_command).map_err(Self::Error::Io)?);
+            if let Some(init_script) = self.init_script.clone() {
+                self.runner
+                    .as_mut()
+                    .unwrap()
+                    .run(init_script, Self::get_end_out_block().replace("\\n", "\n"))
+                    .map_err(Self::Error::Io)?;
+            }
+        }
 
-        self.get_data(&mut stdout)
+        let out = self
+            .runner
+            .as_mut()
+            .unwrap()
+            .run(script, Self::get_end_out_block().replace("\\n", "\n"))
+            .map_err(Self::Error::Io)?;
+        self.get_data(out)
+    }
+}
+
+impl SetInitScript for FromSys {
+    type Script = Script;
+
+    type Error = FromSysError;
+
+    fn set_init_script(
+        &mut self,
+        script: Self::Script,
+        data: HashMap<String, JsonValue>,
+    ) -> Result<(), Self::Error> {
+        self.init_script = Some(self.get_script(script, &data)?);
+        Ok(())
+    }
+}
+
+impl Clean for FromSys {
+    type Script = Script;
+
+    type Error = FromSysError;
+
+    fn clean(&mut self) -> Result<(), Self::Error> {
+        if let Some(runner) = self.runner.as_mut() {
+            runner.child.kill().map_err(FromSysError::Io)?;
+            runner.child.wait().map_err(FromSysError::Io)?;
+
+            self.runner = None;
+        }
+        Ok(())
     }
 }
 
 impl FromSys {
-
     fn get_script(
         &self,
         script: Script,
@@ -80,45 +144,53 @@ impl FromSys {
 {base_script}
 {}
 ",
-            self.input_value_pattern.replace(
-                "{}",
-                &format!("\"{}\"", serde_json::to_string(&data).unwrap().replace("\"", "\\\""))
-            ),
+            if data.is_empty() {
+                "".into()
+            } else {
+                self.input_value_pattern.replace(
+                    "{}",
+                    &format!(
+                        "\"{}\"",
+                        serde_json::to_string(&data).unwrap().replace("\"", "\\\"")
+                    ),
+                )
+            },
             self.print_value_pattern,
         );
         Ok(base_script)
     }
 
-    fn get_data(&self, stdout: &mut ChildStdout) -> Result<Values, FromSysError> {
+    fn get_data(&self, out: String) -> Result<Values, FromSysError> {
         let start_marker = Self::get_start_out_block().replace("\\n", "\n");
         let end_marker = Self::get_end_out_block().replace("\\n", "\n");
 
-        let mut buf_reader = BufReader::new(stdout);
-        let mut out = String::new();
-        loop {
-            let mut line = String::new();
-            buf_reader.read_line(&mut line).map_err(FromSysError::Io)?;
-            out = format!("{out}\n{line}");
+        if let Some(start_idx) = out.rfind(&start_marker)
+            && let Some(end_idx) = out.rfind(&end_marker)
+        {
+            let slice_start = start_idx + start_marker.len();
+            let slice_end = end_idx;
 
-            let start_idx = out.rfind(&start_marker);
-            if let Some(start_idx) = start_idx {
-                let end_idx = out.rfind(&end_marker);
-
-                if let Some(end_idx) = end_idx {
-                    let slice_start = start_idx + start_marker.len();
-                    let slice_end = end_idx;
-
-                    if slice_start <= slice_end
-                        && out.is_char_boundary(slice_start)
-                        && out.is_char_boundary(slice_end)
-                    {
-                        break Ok(Values::new(
-                            serde_json::from_slice(out[slice_start..slice_end].as_bytes()).unwrap(),
-                            self.get_result_name(),
-                        ));
-                    }
-                }
+            if slice_start <= slice_end
+                && out.is_char_boundary(slice_start)
+                && out.is_char_boundary(slice_end)
+            {
+                Ok(Values::new(
+                    serde_json::from_slice(out[slice_start..slice_end].as_bytes()).unwrap(),
+                    self.get_result_name(),
+                ))
+            } else {
+                Err(FromSysError::IncorrectScriptOutput {
+                    out,
+                    start_marker,
+                    end_marker,
+                })
             }
+        } else {
+            Err(FromSysError::IncorrectScriptOutput {
+                out,
+                start_marker,
+                end_marker,
+            })
         }
     }
 
