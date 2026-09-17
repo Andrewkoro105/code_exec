@@ -3,7 +3,7 @@ pub mod script;
 pub mod runner;
 
 use crate::{
-    clean::Clean, from_sys::{runner::Runner, script::InspectorError}, run::Run, run_script::RunScript,
+    clean::Clean, from_sys::{runner::{ErrorDetector, Runner}, script::InspectorError}, run::Run, run_script::RunScript,
     set_init_script::SetInitScript, values::Values,
 };
 use script::{Script, ScriptInspector};
@@ -15,6 +15,7 @@ use tracing::debug;
 pub enum FromSysError {
     Inspector(InspectorError),
     Io(std::io::Error),
+    Runner(runner::Error),
     IncorrectScriptOutput {
         out: String,
         start_marker: String,
@@ -44,15 +45,15 @@ impl RunScript for FromSys {
         let script: String = self.get_script(script, &data)?;
         debug!("{script}");
         self.get_data({
-            let mut runner = Runner::new(&self.base_command).map_err(Self::Error::Io)?;
+            let mut runner = Runner::new(&self.base_command, ErrorDetector::StderrNotIsEmpty).map_err(Self::Error::Io)?;
             if let Some(init_script) = self.init_script.clone() {
                 runner
                     .run(init_script, Self::get_end_out_block().replace("\\n", "\n"))
-                    .map_err(Self::Error::Io)?;
+                    .map_err(Self::Error::Runner)?;
             }
             runner
                 .run(script, Self::get_end_out_block().replace("\\n", "\n"))
-                .map_err(Self::Error::Io)?
+                .map_err(Self::Error::Runner)?
         })
     }
 }
@@ -71,13 +72,13 @@ impl Run for FromSys {
         debug!("{script}");
 
         if self.runner.is_none() {
-            self.runner = Some(Runner::new(&self.base_command).map_err(Self::Error::Io)?);
+            self.runner = Some(Runner::new(&self.base_command, ErrorDetector::StderrNotIsEmpty).map_err(Self::Error::Io)?);
             if let Some(init_script) = self.init_script.clone() {
                 self.runner
                     .as_mut()
                     .unwrap()
                     .run(init_script, Self::get_end_out_block().replace("\\n", "\n"))
-                    .map_err(Self::Error::Io)?;
+                    .map_err(Self::Error::Runner)?;
             }
         }
 
@@ -86,7 +87,7 @@ impl Run for FromSys {
             .as_mut()
             .unwrap()
             .run(script, Self::get_end_out_block().replace("\\n", "\n"))
-            .map_err(Self::Error::Io)?;
+            .map_err(Self::Error::Runner)?;
         self.get_data(out)
     }
 }

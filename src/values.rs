@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 
+#[derive(Debug)]
 pub struct Values {
     json_values: HashMap<String, JsonValue>,
     result_name: String,

@@ -68,7 +68,10 @@ mod test {
     use serde_json::{Number, Value as JsonValue};
 
     use crate::{
-        clean::Clean, from_sys::FromSysError, run::Run, run_script::RunScript,
+        clean::Clean,
+        from_sys::{FromSysError, runner},
+        run::Run,
+        run_script::RunScript,
         set_init_script::SetInitScript,
     };
     use std::collections::HashMap;
@@ -116,7 +119,10 @@ mod test {
         )?;
 
         let result = octave
-            .run_script("input_data.test_value + 2".to_string().into(), HashMap::new())
+            .run_script(
+                "input_data.test_value + 2".to_string().into(),
+                HashMap::new(),
+            )
             .unwrap()
             .get_result()
             .as_u64()
@@ -124,7 +130,10 @@ mod test {
         assert_eq!(result, 42u64.pow(2) + 2);
 
         let result = octave
-            .run_script("input_data.test_value * 2".to_string().into(), HashMap::new())
+            .run_script(
+                "input_data.test_value * 2".to_string().into(),
+                HashMap::new(),
+            )
             .unwrap()
             .get_result()
             .as_u64()
@@ -210,5 +219,22 @@ mod test {
         assert_eq!(result, 42u64.pow(2) + 2);
 
         Ok(())
+    }
+
+    #[test]
+    fn error() {
+        let script_result = MatLabLikeBuilder {
+            target: "octave".into(),
+        }
+        .build()
+        .run_script(
+            "input_data.test_value ^ 2".to_string().into(),
+            HashMap::new(),
+        );
+
+        match script_result {
+            Err(FromSysError::Runner(runner::Error::ExitStatus(_, err))) => {assert_eq!(err, "error: 'input_data' undefined near line 1, column 27\n")},
+            _ => panic!("{script_result:?} != Err(FromSysError::Runner(runner::Error::ExitStatus(_, _)))")
+        }
     }
 }
