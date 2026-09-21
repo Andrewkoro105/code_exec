@@ -78,8 +78,8 @@ mod test {
 
     use super::*;
 
-    #[test]
-    fn run_script() {
+    #[tokio::test]
+    async fn run_script() {
         let mut data = HashMap::new();
         data.insert(
             "test_value".to_string(),
@@ -91,6 +91,7 @@ mod test {
         }
         .build()
         .run_script("input_data.test_value ^ 2".to_string().into(), data)
+        .await
         .unwrap()
         .get_result()
         .as_u64()
@@ -99,8 +100,9 @@ mod test {
         assert_eq!(script_result, 1764);
     }
 
-    #[test]
-    fn init_run_script() -> Result<(), FromSysError> {
+    
+    #[tokio::test]
+    async fn init_run_script() -> Result<(), FromSysError> {
         let mut data = HashMap::new();
         data.insert(
             "test_value".to_string(),
@@ -123,6 +125,7 @@ mod test {
                 "input_data.test_value + 2".to_string().into(),
                 HashMap::new(),
             )
+            .await
             .unwrap()
             .get_result()
             .as_u64()
@@ -134,6 +137,7 @@ mod test {
                 "input_data.test_value * 2".to_string().into(),
                 HashMap::new(),
             )
+            .await
             .unwrap()
             .get_result()
             .as_u64()
@@ -142,8 +146,9 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn run() -> Result<(), FromSysError> {
+    
+    #[tokio::test]
+    async fn run() -> Result<(), FromSysError> {
         let mut data = HashMap::new();
         data.insert(
             "test_value".to_string(),
@@ -159,12 +164,12 @@ mod test {
                 .to_string()
                 .into(),
             data,
-        )?;
+        ).await?;
         let result = octave
             .run(
                 "input_data.test_value + 2".to_string().into(),
                 HashMap::new(),
-            )?
+            ).await?
             .get_result()
             .as_u64()
             .unwrap();
@@ -173,8 +178,9 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn init_run() -> Result<(), FromSysError> {
+    
+    #[tokio::test]
+    async fn init_run() -> Result<(), FromSysError> {
         let mut data = HashMap::new();
         data.insert(
             "test_value".to_string(),
@@ -196,23 +202,23 @@ mod test {
                 .to_string()
                 .into(),
             HashMap::new(),
-        )?;
+        ).await?;
         let result = octave
             .run(
                 "input_data.test_value + 2".to_string().into(),
                 HashMap::new(),
-            )?
+            ).await?
             .get_result()
             .as_u64()
             .unwrap();
         assert_eq!(result, 42u64.pow(2) * 2 + 2);
 
-        octave.clean()?;
+        octave.clean().await?;
         let result = octave
             .run(
                 "input_data.test_value + 2".to_string().into(),
                 HashMap::new(),
-            )?
+            ).await?
             .get_result()
             .as_u64()
             .unwrap();
@@ -221,8 +227,9 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn error() {
+    
+    #[tokio::test]
+    async fn error() {
         let script_result = MatLabLikeBuilder {
             target: "octave".into(),
         }
@@ -230,7 +237,8 @@ mod test {
         .run_script(
             "input_data.test_value ^ 2".to_string().into(),
             HashMap::new(),
-        );
+        )
+        .await;
 
         match script_result {
             Err(FromSysError::Runner(runner::Error::ExitStatus(_, err))) => {assert_eq!(err, "error: 'input_data' undefined near line 1, column 27\n")},

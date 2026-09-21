@@ -16,6 +16,6 @@ pub trait RunScript {
         &self,
         script: Self::Script,
         data: HashMap<String, JsonValue>,
-    ) -> Result<Values, Self::Error>;
+    ) -> impl Future<Output = Result<Values, Self::Error>>;
 }
 

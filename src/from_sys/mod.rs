@@ -37,7 +37,7 @@ impl RunScript for FromSys {
     type Script = Script;
     type Error = FromSysError;
 
-    fn run_script(
+    async fn run_script(
         &self,
         script: Self::Script,
         data: HashMap<String, JsonValue>,
@@ -49,10 +49,12 @@ impl RunScript for FromSys {
             if let Some(init_script) = self.init_script.clone() {
                 runner
                     .run(init_script, Self::get_end_out_block().replace("\\n", "\n"))
+                    .await
                     .map_err(Self::Error::Runner)?;
             }
             runner
                 .run(script, Self::get_end_out_block().replace("\\n", "\n"))
+                .await
                 .map_err(Self::Error::Runner)?
         })
     }
@@ -63,7 +65,7 @@ impl Run for FromSys {
 
     type Error = FromSysError;
 
-    fn run(
+    async fn run(
         &mut self,
         script: Self::Script,
         data: HashMap<String, JsonValue>,
@@ -78,6 +80,7 @@ impl Run for FromSys {
                     .as_mut()
                     .unwrap()
                     .run(init_script, Self::get_end_out_block().replace("\\n", "\n"))
+                    .await
                     .map_err(Self::Error::Runner)?;
             }
         }
@@ -87,6 +90,7 @@ impl Run for FromSys {
             .as_mut()
             .unwrap()
             .run(script, Self::get_end_out_block().replace("\\n", "\n"))
+            .await
             .map_err(Self::Error::Runner)?;
         self.get_data(out)
     }
@@ -112,10 +116,10 @@ impl Clean for FromSys {
 
     type Error = FromSysError;
 
-    fn clean(&mut self) -> Result<(), Self::Error> {
+    async fn clean(&mut self) -> Result<(), Self::Error> {
         if let Some(runner) = self.runner.as_mut() {
-            runner.child.kill().map_err(FromSysError::Io)?;
-            runner.child.wait().map_err(FromSysError::Io)?;
+            runner.child.kill().await.map_err(FromSysError::Io)?;
+            runner.child.wait().await.map_err(FromSysError::Io)?;
 
             self.runner = None;
         }
