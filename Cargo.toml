@@ -2,6 +2,12 @@
 name = "code_exec"
 version = "0.1.0"
 edition = "2024"
+authors = ["Andrewkoro105"]
+license = "MIT"
+repository = "https://github.com/Andrewkoro105/code_exec"
+description = "A library that provides a universal API for working with various code execution systems, hiding their implementation behind a layer of traits."
+keywords = ["compiler", "interop", "polyglot", "traits", "code-runner"]
+categories = ["Rust patterns", "Compilers", "Science", "Asynchronous", "Configuration"]
 
 [dependencies]
 serde_json = "1.0.149"
