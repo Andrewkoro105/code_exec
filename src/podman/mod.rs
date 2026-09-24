@@ -126,6 +126,35 @@ impl Run for Podman {
     }
 }
 
+impl RunScript for Podman {
+    type Script = <FromSys as RunScript>::Script;
+
+    type Error = Error;
+
+    async fn run_script(
+        &self,
+        script: Self::Script,
+        data: std::collections::HashMap<String, serde_json::Value>,
+    ) -> Result<crate::values::Values, Self::Error> {
+        let mut from_sys = self.from_sys.clone_conf();
+        if from_sys.get_runner().is_none() {
+            from_sys.set_runner(
+                self.podman_core
+                    .run(
+                        &self.dir,
+                        self.docker_file.clone(),
+                        self.name.clone(),
+                        self.from_sys.base_command.clone(),
+                    )
+                    .await
+                    .map_err(Self::Error::Io)?,
+            );
+        }
+
+        from_sys.run(script, data).await.map_err(Self::Error::FromSys)
+    }
+}
+
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::Io(value)
