@@ -28,8 +28,8 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn new(command: impl AsRef<OsStr>, error_detector: ErrorDetector) -> io::Result<Self> {
-        let mut child = Command::new(command)
+    pub fn from_command(command: &mut Command, error_detector: ErrorDetector) -> io::Result<Self> {
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -42,6 +42,10 @@ impl Runner {
             child,
             error_detector,
         })
+    }
+
+    pub fn new(command: impl AsRef<OsStr>, error_detector: ErrorDetector) -> io::Result<Self> {
+        Self::from_command(&mut Command::new(command), error_detector)
     }
 
     pub async fn run(&mut self, script: String, end_marker: String) -> Result<String, Error> {

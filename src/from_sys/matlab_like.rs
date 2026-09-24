@@ -1,8 +1,6 @@
 use crate::from_sys::{
     FromSys,
-    script::{MatParser, ScriptInspector},
 };
-use std::collections::HashSet;
 
 pub struct MatLabLikeBuilder {
     pub target: String,
@@ -53,10 +51,6 @@ printf("{end_out_block}")
             "#
             ),
             input_value_pattern: "input_data = jsondecode({});".to_string(),
-            script_inspector: ScriptInspector {
-                restricted_functions: HashSet::new(),
-                parser: Box::new(MatParser) as _,
-            },
             init_script: None,
             runner: None,
         }

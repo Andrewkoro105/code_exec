@@ -1,19 +1,20 @@
 pub mod matlab_like;
-pub mod script;
 pub mod runner;
 
 use crate::{
-    clean::Clean, from_sys::{runner::{ErrorDetector, Runner}, script::InspectorError}, run::Run, run_script::RunScript,
-    set_init_script::SetInitScript, values::Values,
+    clean::Clean,
+    from_sys::runner::{ErrorDetector, Runner},
+    run::Run,
+    run_script::RunScript,
+    set_init_script::SetInitScript,
+    values::Values,
 };
-use script::{Script, ScriptInspector};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use tracing::debug;
 
 #[derive(Debug)]
 pub enum FromSysError {
-    Inspector(InspectorError),
     Io(std::io::Error),
     Runner(runner::Error),
     IncorrectScriptOutput {
@@ -27,14 +28,13 @@ pub struct FromSys {
     pub base_command: String,
     pub print_value_pattern: String,
     pub input_value_pattern: String,
-    pub script_inspector: ScriptInspector,
 
     runner: Option<Runner>,
     init_script: Option<String>,
 }
 
 impl RunScript for FromSys {
-    type Script = Script;
+    type Script = String;
     type Error = FromSysError;
 
     async fn run_script(
@@ -45,7 +45,8 @@ impl RunScript for FromSys {
         let script: String = self.get_script(script, &data)?;
         debug!("{script}");
         self.get_data({
-            let mut runner = Runner::new(&self.base_command, ErrorDetector::StderrNotIsEmpty).map_err(Self::Error::Io)?;
+            let mut runner = Runner::new(&self.base_command, ErrorDetector::StderrNotIsEmpty)
+                .map_err(Self::Error::Io)?;
             if let Some(init_script) = self.init_script.clone() {
                 runner
                     .run(init_script, Self::get_end_out_block().replace("\\n", "\n"))
@@ -61,7 +62,7 @@ impl RunScript for FromSys {
 }
 
 impl Run for FromSys {
-    type Script = Script;
+    type Script = String;
 
     type Error = FromSysError;
 
@@ -74,7 +75,10 @@ impl Run for FromSys {
         debug!("{script}");
 
         if self.runner.is_none() {
-            self.runner = Some(Runner::new(&self.base_command, ErrorDetector::StderrNotIsEmpty).map_err(Self::Error::Io)?);
+            self.runner = Some(
+                Runner::new(&self.base_command, ErrorDetector::StderrNotIsEmpty)
+                    .map_err(Self::Error::Io)?,
+            );
             if let Some(init_script) = self.init_script.clone() {
                 self.runner
                     .as_mut()
@@ -97,7 +101,7 @@ impl Run for FromSys {
 }
 
 impl SetInitScript for FromSys {
-    type Script = Script;
+    type Script = String;
 
     type Error = FromSysError;
 
@@ -112,7 +116,7 @@ impl SetInitScript for FromSys {
 }
 
 impl Clean for FromSys {
-    type Script = Script;
+    type Script = String;
 
     type Error = FromSysError;
 
@@ -128,17 +132,30 @@ impl Clean for FromSys {
 }
 
 impl FromSys {
+    pub fn clone_conf(&self) -> Self {
+        Self {
+            base_command: self.base_command.clone(),
+            print_value_pattern: self.print_value_pattern.clone(),
+            input_value_pattern: self.input_value_pattern.clone(),
+            runner: None,
+            init_script: self.init_script.clone(),
+        }
+    }
+
+    pub fn set_runner(&mut self, runner: Runner) {
+        self.runner = Some(runner)
+    }
+
+    pub fn get_runner(&self) -> &Option<Runner> {
+        &self.runner
+    }
+
     fn get_script(
         &self,
-        script: Script,
+        script: String,
         data: &HashMap<String, JsonValue>,
     ) -> Result<String, FromSysError> {
-        let mut base_script = self
-            .script_inspector
-            .to_string(script)
-            .map_err(FromSysError::Inspector)?
-            .trim()
-            .to_string();
+        let mut base_script = script.trim().to_string();
         if !base_script.is_empty() {
             let pos = base_script.rfind('\n').map_or(0, |p| p + 1);
             base_script.insert_str(pos, &format!("{} = ", self.get_result_name()));
