@@ -3,11 +3,7 @@ mod podman_core;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    from_sys::{FromSys, FromSysError},
-    load::Load,
-    podman::podman_core::{PodmanCore, Version},
-    run::Run,
-    run_script::RunScript,
+    clean::Clean, from_sys::{FromSys, FromSysError}, load::Load, podman::podman_core::{PodmanCore, Version}, run::Run, run_script::RunScript
 };
 use std::path::PathBuf;
 
@@ -152,6 +148,16 @@ impl RunScript for Podman {
         }
 
         from_sys.run(script, data).await.map_err(Self::Error::FromSys)
+    }
+}
+
+impl Clean for Podman {
+    type Script = <FromSys as RunScript>::Script;
+
+    type Error = Error;
+
+    async fn clean(&mut self) -> Result<(), Self::Error> {
+        self.from_sys.clean().await.map_err(Self::Error::FromSys)
     }
 }
 
