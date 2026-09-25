@@ -24,4 +24,8 @@ tokio-tar = "0.3.1"
 sugar = "0.2.0"
 #pty-process = { version = "0.5.3", features = ["async"] }
 
+[features]
+default = []
+from_sys = []
+podman = ["from_sys"]
 

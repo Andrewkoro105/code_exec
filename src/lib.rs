@@ -1,8 +1,10 @@
 pub mod clean;
+#[cfg(feature = "from_sys")]
 pub mod from_sys;
 pub mod load;
 pub mod run;
 pub mod run_script;
 pub mod set_init_script;
 pub mod values;
+#[cfg(feature = "podman")]
 pub mod podman;
